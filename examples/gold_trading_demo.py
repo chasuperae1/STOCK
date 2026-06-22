@@ -3,15 +3,10 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from gold_quant_toolkit import (
-    GoldData,
-    TrendFollowingStrategy,
-    MeanReversionStrategy,
-    GridTradingStrategy,
-    MultiFactorStrategy,
-    BackTester,
-    EventEngine
-)
+from core.data import GoldData
+from core.strategy import TrendFollowingStrategy, MeanReversionStrategy, GridTradingStrategy, MultiFactorStrategy
+from core.backtest import BackTester
+from core.event import EventEngine
 
 
 def run_strategy_backtest(strategy_name, strategy_class, data):

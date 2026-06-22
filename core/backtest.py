@@ -22,16 +22,29 @@ class BackTestResult:
         })
 
     def calculate_stats(self):
+        total_return = self.equity_curve['equity'].iloc[-1] / self.equity_curve['equity'].iloc[0] - 1
+        max_drawdown = self._calculate_max_drawdown(self.equity_curve['equity'])
+        
         if len(self.trades) == 0:
-            return {}
+            self.stats = {
+                'total_trades': 0,
+                'winning_trades': 0,
+                'losing_trades': 0,
+                'win_rate': 0.0,
+                'total_pnl': 0.0,
+                'avg_win': 0.0,
+                'avg_loss': 0.0,
+                'profit_factor': 0.0,
+                'total_return': total_return,
+                'max_drawdown': max_drawdown,
+                'sharpe_ratio': self._calculate_sharpe_ratio(self.equity_curve['equity'])
+            }
+            return self.stats
 
         trades_df = pd.DataFrame(self.trades)
         
         winning_trades = trades_df[trades_df['pnl'] > 0]
         losing_trades = trades_df[trades_df['pnl'] <= 0]
-        
-        total_return = self.equity_curve['equity'].iloc[-1] / self.equity_curve['equity'].iloc[0] - 1
-        max_drawdown = self._calculate_max_drawdown(self.equity_curve['equity'])
         
         self.stats = {
             'total_trades': len(self.trades),
