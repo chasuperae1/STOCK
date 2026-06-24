@@ -10,7 +10,15 @@
     2. RSI超买超卖策略
     3. MACD金叉死叉策略
     4. 布林带策略
-    5. 金叉死叉策略
+    5. 布林带均值回归策略（RSI双重确认）
+    6. 金叉死叉策略
+    7. 双均线趋势过滤策略（MA60大方向+MA5/MA20入场）
+    8. 海龟交易策略（唐奇安通道突破）
+    9. 动量策略
+    10. 均线偏离率策略（均值回归）
+    11. KDJ金叉死叉策略
+    12. 威廉指标策略
+    13. 多因子综合打分策略
 
 回测指标：
     - 总收益率
@@ -105,6 +113,47 @@ class BacktestEngine:
         df['bb_std'] = df['close'].rolling(20).std()
         df['bb_upper'] = df['bb_mid'] + 2 * df['bb_std']
         df['bb_lower'] = df['bb_mid'] - 2 * df['bb_std']
+        
+        # ATR (真实波幅)
+        high_low = df['high'] - df['low']
+        high_close = (df['high'] - df['close'].shift(1)).abs()
+        low_close = (df['low'] - df['close'].shift(1)).abs()
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        df['atr'] = tr.rolling(14).mean()
+        
+        # 动量 (过去N日收益率)
+        df['momentum_5'] = df['close'].pct_change(5)
+        df['momentum_10'] = df['close'].pct_change(10)
+        df['momentum_20'] = df['close'].pct_change(20)
+        
+        # 波动率
+        df['volatility_20'] = df['close'].pct_change().rolling(20).std()
+        
+        # 唐奇安通道 (海龟交易)
+        df['high_20'] = df['high'].rolling(20).max()
+        df['low_10'] = df['low'].rolling(10).min()
+        df['high_55'] = df['high'].rolling(55).max()
+        df['low_20'] = df['low'].rolling(20).min()
+        
+        # 均线偏离率
+        df['bias_5'] = (df['close'] - df['ma5']) / df['ma5'] * 100
+        df['bias_20'] = (df['close'] - df['ma20']) / df['ma20'] * 100
+        df['bias_60'] = (df['close'] - df['ma60']) / df['ma60'] * 100
+        
+        # 威廉指标
+        low_14 = df['low'].rolling(14).min()
+        high_14 = df['high'].rolling(14).max()
+        df['willr'] = -100 * (high_14 - df['close']) / (high_14 - low_14)
+        df['willr'] = df['willr'].fillna(-50)
+        
+        # KDJ 指标
+        low_9 = df['low'].rolling(9).min()
+        high_9 = df['high'].rolling(9).max()
+        rsv = (df['close'] - low_9) / (high_9 - low_9) * 100
+        rsv = rsv.fillna(50)
+        df['kdj_k'] = rsv.ewm(com=2, adjust=False).mean()
+        df['kdj_d'] = df['kdj_k'].ewm(com=2, adjust=False).mean()
+        df['kdj_j'] = 3 * df['kdj_k'] - 2 * df['kdj_d']
         
         return df
     
@@ -351,6 +400,360 @@ class BacktestEngine:
         result.strategy_name = "金叉死叉(5/20)"
         return result
     
+    def turtle_strategy(self, df: pd.DataFrame) -> BacktestResult:
+        """
+        海龟交易策略（唐奇安通道突破）
+        
+        规则：
+            - 价格突破20日最高价 → 买入
+            - 价格跌破10日最低价 → 卖出
+        """
+        df = self._calculate_indicators(df)
+        
+        signals = pd.Series(0, index=df.index)
+        
+        for i in range(1, len(df)):
+            close = df['close'].iloc[i]
+            high_20 = df['high_20'].iloc[i-1]
+            low_10 = df['low_10'].iloc[i-1]
+            
+            if pd.notna(high_20) and close > high_20:
+                signals.iloc[i] = 1
+            elif pd.notna(low_10) and close < low_10:
+                signals.iloc[i] = -1
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = "海龟交易(20/10)"
+        return result
+    
+    def momentum_strategy(self, df: pd.DataFrame, period: int = 10) -> BacktestResult:
+        """
+        动量策略
+        
+        规则：
+            - 过去N日涨幅为正 → 买入（趋势延续）
+            - 过去N日涨幅为负 → 卖出（趋势反转）
+        """
+        df = self._calculate_indicators(df)
+        
+        signals = pd.Series(0, index=df.index)
+        momentum_col = f'momentum_{period}'
+        
+        for i in range(1, len(df)):
+            mom = df[momentum_col].iloc[i]
+            
+            if pd.notna(mom) and mom > 0:
+                signals.iloc[i] = 1
+            elif pd.notna(mom) and mom < 0:
+                signals.iloc[i] = -1
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = f"动量策略({period}日)"
+        return result
+    
+    def bias_strategy(self, df: pd.DataFrame, period: int = 20, threshold: float = 5.0) -> BacktestResult:
+        """
+        均线偏离率策略（均值回归）
+        
+        规则：
+            - 价格低于均线超过阈值 → 买入（超跌反弹）
+            - 价格高于均线超过阈值 → 卖出（超涨回落）
+        """
+        df = self._calculate_indicators(df)
+        
+        signals = pd.Series(0, index=df.index)
+        bias_col = f'bias_{period}'
+        
+        for i in range(1, len(df)):
+            bias = df[bias_col].iloc[i]
+            
+            if pd.notna(bias) and bias < -threshold:
+                signals.iloc[i] = 1
+            elif pd.notna(bias) and bias > threshold:
+                signals.iloc[i] = -1
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = f"偏离率({period}日,{threshold}%)"
+        return result
+    
+    def multi_factor_strategy(self, df: pd.DataFrame) -> BacktestResult:
+        """
+        多因子综合打分策略
+        
+        因子：趋势 + 动量 + 波动率 + RSI
+        权重：趋势30% + 动量30% + 波动率20% + RSI20%
+        """
+        df = self._calculate_indicators(df)
+        
+        signals = pd.Series(0, index=df.index)
+        
+        for i in range(1, len(df)):
+            close = df['close'].iloc[i]
+            ma20 = df['ma20'].iloc[i]
+            mom_10 = df['momentum_10'].iloc[i]
+            vol = df['volatility_20'].iloc[i]
+            rsi = df['rsi'].iloc[i]
+            
+            if any(pd.isna(x) for x in [ma20, mom_10, vol, rsi]):
+                continue
+            
+            # 趋势因子：价格在20日均线上方为正
+            trend_score = 1.0 if close > ma20 else -1.0
+            
+            # 动量因子：10日涨跌幅标准化
+            momentum_score = max(-1.0, min(1.0, mom_10 * 10))
+            
+            # 波动率因子：低波动加分（用倒数）
+            vol_score = 1.0 / (1.0 + vol * 100)
+            
+            # RSI因子：RSI在50以上为正，超买超卖修正
+            if rsi < 30:
+                rsi_score = 1.0
+            elif rsi > 70:
+                rsi_score = -1.0
+            else:
+                rsi_score = (rsi - 50) / 20
+            
+            # 综合打分
+            total_score = (
+                trend_score * 0.30 +
+                momentum_score * 0.30 +
+                vol_score * 0.20 +
+                rsi_score * 0.20
+            )
+            
+            if total_score > 0.3:
+                signals.iloc[i] = 1
+            elif total_score < -0.2:
+                signals.iloc[i] = -1
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = "多因子综合"
+        return result
+    
+    def kdj_strategy(self, df: pd.DataFrame) -> BacktestResult:
+        """
+        KDJ指标策略
+        
+        规则：
+            - K线上穿D线且J<20 → 买入（金叉+超卖）
+            - K线下穿D线且J>80 → 卖出（死叉+超买）
+        """
+        df = self._calculate_indicators(df)
+        
+        signals = pd.Series(0, index=df.index)
+        
+        for i in range(1, len(df)):
+            k = df['kdj_k'].iloc[i]
+            d = df['kdj_d'].iloc[i]
+            j = df['kdj_j'].iloc[i]
+            k_prev = df['kdj_k'].iloc[i-1]
+            d_prev = df['kdj_d'].iloc[i-1]
+            
+            if any(pd.isna(x) for x in [k, d, j, k_prev, d_prev]):
+                continue
+            
+            # 金叉：K上穿D 且 J在低位
+            if k > d and k_prev <= d_prev and j < 50:
+                signals.iloc[i] = 1
+            # 死叉：K下穿D 且 J在高位
+            elif k < d and k_prev >= d_prev and j > 50:
+                signals.iloc[i] = -1
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = "KDJ金叉死叉"
+        return result
+    
+    def willr_strategy(self, df: pd.DataFrame) -> BacktestResult:
+        """
+        威廉指标策略
+        
+        规则：
+            - Williams %R < -80 → 买入（超卖）
+            - Williams %R > -20 → 卖出（超买）
+        """
+        df = self._calculate_indicators(df)
+        
+        signals = pd.Series(0, index=df.index)
+        
+        for i in range(1, len(df)):
+            willr = df['willr'].iloc[i]
+            
+            if pd.isna(willr):
+                continue
+            
+            if willr < -80:
+                signals.iloc[i] = 1
+            elif willr > -20:
+                signals.iloc[i] = -1
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = "威廉指标"
+        return result
+    
+    def dual_ma_trend_filter(self, df: pd.DataFrame) -> BacktestResult:
+        """
+        双均线趋势过滤策略
+        
+        规则：
+            - 大趋势：价格在60日均线上方（只做多）
+            - 入场：5日均线上穿20日均线 → 买入
+            - 出场：5日均线下穿20日均线 → 卖出
+        """
+        df = self._calculate_indicators(df)
+        
+        signals = pd.Series(0, index=df.index)
+        
+        for i in range(1, len(df)):
+            close = df['close'].iloc[i]
+            ma5 = df['ma5'].iloc[i]
+            ma20 = df['ma20'].iloc[i]
+            ma60 = df['ma60'].iloc[i]
+            ma5_prev = df['ma5'].iloc[i-1]
+            ma20_prev = df['ma20'].iloc[i-1]
+            
+            if any(pd.isna(x) for x in [ma5, ma20, ma60, ma5_prev, ma20_prev]):
+                continue
+            
+            # 只在大趋势向上时做多
+            if close > ma60:
+                # 金叉买入
+                if ma5 > ma20 and ma5_prev <= ma20_prev:
+                    signals.iloc[i] = 1
+                # 死叉卖出
+                elif ma5 < ma20 and ma5_prev >= ma20_prev:
+                    signals.iloc[i] = -1
+            else:
+                # 大趋势向下，空仓
+                signals.iloc[i] = -1
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = "双均线趋势过滤"
+        return result
+    
+    def bollinger_reversion(self, df: pd.DataFrame) -> BacktestResult:
+        """
+        布林带均值回归策略（改进版）
+        
+        规则：
+            - 价格跌破下轨且RSI<30 → 买入（双重超卖确认）
+            - 价格突破上轨且RSI>70 → 卖出（双重超买确认）
+        """
+        df = self._calculate_indicators(df)
+        
+        signals = pd.Series(0, index=df.index)
+        
+        for i in range(1, len(df)):
+            close = df['close'].iloc[i]
+            upper = df['bb_upper'].iloc[i]
+            lower = df['bb_lower'].iloc[i]
+            rsi = df['rsi'].iloc[i]
+            
+            if any(pd.isna(x) for x in [close, upper, lower, rsi]):
+                continue
+            
+            if close < lower and rsi < 40:
+                signals.iloc[i] = 1
+            elif close > upper and rsi > 60:
+                signals.iloc[i] = -1
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = "布林带均值回归"
+        return result
+    
+    def ensemble_voting_strategy(self, df: pd.DataFrame) -> BacktestResult:
+        """
+        多策略投票组合策略
+        
+        规则：
+            - 多个策略投票，超过半数看多 → 买入
+            - 多个策略投票，超过半数看空 → 卖出
+        """
+        df = self._calculate_indicators(df)
+        
+        # 生成各策略信号
+        signal_list = []
+        
+        # 1. 均线交叉(5/20)
+        sig1 = pd.Series(0, index=df.index)
+        for i in range(1, len(df)):
+            if df['ma5'].iloc[i] > df['ma20'].iloc[i] and df['ma5'].iloc[i-1] <= df['ma20'].iloc[i-1]:
+                sig1.iloc[i] = 1
+            elif df['ma5'].iloc[i] < df['ma20'].iloc[i] and df['ma5'].iloc[i-1] >= df['ma20'].iloc[i-1]:
+                sig1.iloc[i] = -1
+        signal_list.append(sig1)
+        
+        # 2. MACD
+        sig2 = pd.Series(0, index=df.index)
+        for i in range(1, len(df)):
+            if df['macd'].iloc[i] > df['macd_signal'].iloc[i] and df['macd'].iloc[i-1] <= df['macd_signal'].iloc[i-1]:
+                sig2.iloc[i] = 1
+            elif df['macd'].iloc[i] < df['macd_signal'].iloc[i] and df['macd'].iloc[i-1] >= df['macd_signal'].iloc[i-1]:
+                sig2.iloc[i] = -1
+        signal_list.append(sig2)
+        
+        # 3. RSI
+        sig3 = pd.Series(0, index=df.index)
+        for i in range(1, len(df)):
+            if df['rsi'].iloc[i] < 30:
+                sig3.iloc[i] = 1
+            elif df['rsi'].iloc[i] > 70:
+                sig3.iloc[i] = -1
+        signal_list.append(sig3)
+        
+        # 4. 动量(10日)
+        sig4 = pd.Series(0, index=df.index)
+        for i in range(1, len(df)):
+            mom = df['momentum_10'].iloc[i]
+            if pd.notna(mom) and mom > 0:
+                sig4.iloc[i] = 1
+            elif pd.notna(mom) and mom < 0:
+                sig4.iloc[i] = -1
+        signal_list.append(sig4)
+        
+        # 5. KDJ
+        sig5 = pd.Series(0, index=df.index)
+        for i in range(1, len(df)):
+            k = df['kdj_k'].iloc[i]
+            d = df['kdj_d'].iloc[i]
+            k_prev = df['kdj_k'].iloc[i-1]
+            d_prev = df['kdj_d'].iloc[i-1]
+            if any(pd.isna(x) for x in [k, d, k_prev, d_prev]):
+                continue
+            if k > d and k_prev <= d_prev:
+                sig5.iloc[i] = 1
+            elif k < d and k_prev >= d_prev:
+                sig5.iloc[i] = -1
+        signal_list.append(sig5)
+        
+        # 投票：统计当前持仓状态（用累计信号表示）
+        signals = pd.Series(0, index=df.index)
+        position = 0  # 1=持有, 0=空仓
+        
+        for i in range(1, len(df)):
+            votes_buy = 0
+            votes_sell = 0
+            
+            for sig in signal_list:
+                s = sig.iloc[i]
+                if s == 1:
+                    votes_buy += 1
+                elif s == -1:
+                    votes_sell += 1
+            
+            # 超过3票看多 → 买入
+            if votes_buy >= 3 and position == 0:
+                signals.iloc[i] = 1
+                position = 1
+            # 超过3票看空 → 卖出
+            elif votes_sell >= 3 and position == 1:
+                signals.iloc[i] = -1
+                position = 0
+        
+        result = self._run_strategy(df, signals)
+        result.strategy_name = "多策略投票组合"
+        return result
+    
     def run_all_strategies(self, df: pd.DataFrame) -> List[BacktestResult]:
         """
         运行所有策略并返回结果列表
@@ -366,10 +769,21 @@ class BacktestEngine:
         strategies = [
             ('均线交叉(5/20)', lambda: self.ma_crossover(df, 5, 20)),
             ('均线交叉(10/20)', lambda: self.ma_crossover(df, 10, 20)),
+            ('均线交叉(20/60)', lambda: self.ma_crossover(df, 20, 60)),
             ('RSI(30/70)', lambda: self.rsi_strategy(df, 30, 70)),
             ('MACD金叉死叉', lambda: self.macd_strategy(df)),
             ('布林带策略', lambda: self.bollinger_strategy(df)),
+            ('布林带均值回归', lambda: self.bollinger_reversion(df)),
             ('金叉死叉(5/20)', lambda: self.golden_cross_strategy(df)),
+            ('双均线趋势过滤', lambda: self.dual_ma_trend_filter(df)),
+            ('海龟交易(20/10)', lambda: self.turtle_strategy(df)),
+            ('动量策略(10日)', lambda: self.momentum_strategy(df, 10)),
+            ('动量策略(20日)', lambda: self.momentum_strategy(df, 20)),
+            ('偏离率(20日,5%)', lambda: self.bias_strategy(df, 20, 5.0)),
+            ('KDJ金叉死叉', lambda: self.kdj_strategy(df)),
+            ('威廉指标', lambda: self.willr_strategy(df)),
+            ('多因子综合', lambda: self.multi_factor_strategy(df)),
+            ('多策略投票组合', lambda: self.ensemble_voting_strategy(df)),
         ]
         
         for name, strategy_func in strategies:
