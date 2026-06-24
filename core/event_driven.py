@@ -360,7 +360,9 @@ class EventDrivenAnalyzer:
         key_news = []
         
         for news in news_list:
-            text = (news.get('title', '') + ' ' + news.get('description', '')).lower()
+            title = news.get('title', '') or ''
+            desc = news.get('description', '') or ''
+            text = (title + ' ' + desc).lower()
             
             if 'fed' not in text and 'powell' not in text and 'fomc' not in text:
                 continue
@@ -431,7 +433,9 @@ class EventDrivenAnalyzer:
         relevant_news = []
         
         for news in news_list:
-            text = (news.get('title', '') + ' ' + news.get('description', '')).lower()
+            title = news.get('title', '') or ''
+            desc = news.get('description', '') or ''
+            text = (title + ' ' + desc).lower()
             
             article_risk = 0.0
             for keyword, weight in risk_keywords.items():
