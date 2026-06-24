@@ -66,80 +66,164 @@ class NewsSentimentAnalyzer:
     """
     
     def __init__(self):
-        # 正面情绪词库（利多黄金）
-        self.positive_words = {
+        # ========================================
+        # 英文情感词库（利多黄金为正）
+        # ========================================
+        self.positive_words_en = {
             # 上涨类
             'surge': 0.8, 'soar': 0.8, 'rally': 0.7, 'gain': 0.6,
             'rise': 0.5, 'increase': 0.4, 'climb': 0.5, 'jump': 0.6,
             'advance': 0.4, 'up': 0.3, 'higher': 0.4, 'growth': 0.4,
-            
             # 看好类
             'bullish': 0.9, 'optimistic': 0.7, 'positive': 0.6,
             'strong': 0.5, 'outperform': 0.7, 'upgrade': 0.6,
             'buy': 0.6, 'long': 0.5, 'support': 0.4,
-            
             # 避险类（对黄金是正面）
             'safe haven': 0.8, 'risk off': 0.7, 'fear': 0.6,
             'uncertainty': 0.5, 'volatility': 0.4, 'crisis': 0.7,
             'tension': 0.5, 'worried': 0.5, 'concern': 0.3,
-            
-            # 通胀类（利多黄金）
+            # 通胀/降息类（利多黄金）
             'inflation': 0.5, 'hot': 0.4, 'rising prices': 0.6,
             'rate cut': 0.7, 'dovish': 0.6, 'easing': 0.5,
         }
         
-        # 负面情绪词库（利空黄金）
-        self.negative_words = {
+        self.negative_words_en = {
             # 下跌类
             'plunge': -0.8, 'crash': -0.9, 'slump': -0.7, 'drop': -0.5,
             'fall': -0.5, 'decline': -0.4, 'decrease': -0.4, 'tumble': -0.7,
             'dip': -0.3, 'down': -0.3, 'lower': -0.4, 'loss': -0.5,
-            
             # 看空类
             'bearish': -0.9, 'pessimistic': -0.7, 'negative': -0.6,
             'weak': -0.5, 'underperform': -0.7, 'downgrade': -0.6,
             'sell': -0.6, 'short': -0.5, 'resistance': -0.3,
-            
             # 风险偏好类（利空黄金）
             'risk on': -0.7, 'optimism': -0.4, 'confidence': -0.3,
-            'rally in stocks': -0.6, 'stock market up': -0.5,
-            
             # 加息类（利空黄金）
             'rate hike': -0.7, 'hawkish': -0.6, 'tightening': -0.5,
-            'fed hike': -0.7, 'higher rates': -0.6,
+            'higher rates': -0.6,
         }
         
-        # 否定词（会翻转情绪）
-        self.negation_words = [
+        self.negation_words_en = [
             'not', 'no', 'never', "don't", "doesn't", "didn't",
             'isn\'t', 'aren\'t', 'won\'t', 'wouldn\'t',
             'fail to', 'lack of', 'without',
         ]
         
-        # 加强词（会放大情绪）
-        self.intensifiers = {
+        self.intensifiers_en = {
             'very': 1.3, 'extremely': 1.5, 'significantly': 1.4,
             'sharply': 1.4, 'dramatically': 1.5, 'slightly': 0.7,
             'modestly': 0.8, 'moderately': 0.9,
         }
         
-        # 主题关键词
-        self.topic_keywords = {
-            'fed_policy': ['fed', 'fomc', 'powell', 'rate decision', 'interest rate', 'rate cut', 'rate hike', 'monetary policy', 'federal reserve'],
-            'inflation': ['cpi', 'inflation', 'pce', 'ppi', 'consumer price', 'price index', 'rising prices'],
-            'geopolitical': ['war', 'conflict', 'military', 'attack', 'sanction', 'tariff', 'tension', 'geopolitical', 'crisis', 'election'],
-            'dollar': ['dollar', 'usd', 'dollar index', 'greenback'],
-            'supply_demand': ['supply', 'demand', 'production', 'consumption', 'import', 'export', 'etf', 'holding'],
-            'employment': ['nonfarm', 'nfp', 'employment', 'unemployment', 'job', 'labor'],
-            'growth': ['gdp', 'growth', 'recession', 'economic', 'recovery'],
+        # ========================================
+        # 中文情感词库（利多黄金为正）
+        # ========================================
+        self.positive_words_cn = {
+            # 上涨类
+            '上涨': 0.5, '走高': 0.5, '拉升': 0.6, '大涨': 0.7,
+            '飙升': 0.8, '暴涨': 0.8, '冲高': 0.5, '反弹': 0.5,
+            '回升': 0.4, '上涨': 0.5, '走高': 0.5, '走强': 0.5,
+            '上扬': 0.4, '攀升': 0.4, '上涨': 0.5, '突破': 0.6,
+            '创下新高': 0.7, '刷新高': 0.7, '收涨': 0.5,
+            # 看好类
+            '看涨': 0.7, '看多': 0.7, '利好': 0.6, '利多': 0.6,
+            '强势': 0.5, '强劲': 0.5, '支撑': 0.4, '增持': 0.5,
+            '买入': 0.5, '加仓': 0.5, '抄底': 0.6, '做多': 0.6,
+            '乐观': 0.5, '积极': 0.4, '向好': 0.5,
+            # 避险类（对黄金是正面）
+            '避险': 0.6, '恐慌': 0.5, '担忧': 0.4, '不确定性': 0.4,
+            '动荡': 0.5, '危机': 0.6, '风险': 0.3, '紧张': 0.4,
+            '暴跌': 0.3,  # 股市暴跌通常利好黄金
+            # 通胀/降息类（利多黄金）
+            '通胀': 0.5, '加息预期降温': 0.6, '降息': 0.7,
+            '鸽派': 0.6, '宽松': 0.5, '放水': 0.6,
+            '超预期': 0.3, '超预期上涨': 0.6,
         }
         
-        # 重要性词（提升新闻权重）
+        self.negative_words_cn = {
+            # 下跌类
+            '下跌': -0.5, '走低': -0.5, '回落': -0.4, '大跌': -0.7,
+            '暴跌': -0.8, '跳水': -0.7, '下挫': -0.5, '下滑': -0.4,
+            '跌破': -0.6, '刷新低': -0.7, '收跌': -0.5,
+            '走弱': -0.5, '下跌': -0.5, '回调': -0.4, '下探': -0.5,
+            '承压': -0.4, '重挫': -0.7, '崩跌': -0.8,
+            # 看空类
+            '看空': -0.7, '看跌': -0.7, '利空': -0.6,
+            '疲软': -0.5, '弱势': -0.5, '阻力': -0.3,
+            '卖出': -0.5, '减仓': -0.5, '清仓': -0.6, '做空': -0.6,
+            '悲观': -0.5, '消极': -0.4, '担忧': -0.3,
+            # 加息类（利空黄金）
+            '加息': -0.6, '鹰派': -0.6, '收紧': -0.5,
+            '加息预期升温': -0.7, '缩减': -0.5,
+            '美元走强': -0.5, '美指上涨': -0.5,
+            # 风险偏好类（利空黄金）
+            '风险偏好回升': -0.5, '股市大涨': -0.4, '乐观情绪': -0.3,
+        }
+        
+        self.negation_words_cn = [
+            '不', '未', '没有', '不是', '不会', '不能', '无',
+            '缺乏', '没有', '尚未', '未能',
+        ]
+        
+        self.intensifiers_cn = {
+            '大幅': 1.4, '大幅': 1.4, '显著': 1.3, '明显': 1.2,
+            '急剧': 1.5, '剧烈': 1.5, '小幅': 0.7, '轻微': 0.7,
+            '略微': 0.8, '适度': 0.9,
+        }
+        
+        # ========================================
+        # 主题关键词（中英文）
+        # ========================================
+        self.topic_keywords = {
+            'fed_policy': [
+                'fed', 'fomc', 'powell', 'rate decision', 'interest rate',
+                'rate cut', 'rate hike', 'monetary policy', 'federal reserve',
+                '美联储', '鲍威尔', '利率决议', '降息', '加息',
+                '货币政策', '联储', '议息会议', 'FOMC',
+            ],
+            'inflation': [
+                'cpi', 'inflation', 'pce', 'ppi', 'consumer price',
+                '通胀', '通货膨胀', '物价', '居民消费价格', 'CPI',
+                'PCE', '核心通胀',
+            ],
+            'geopolitical': [
+                'war', 'conflict', 'military', 'attack', 'sanction',
+                'tariff', 'tension', 'geopolitical', 'crisis', 'election',
+                '战争', '冲突', '军事', '制裁', '关税', '地缘',
+                '危机', '大选', '选举', '紧张', '袭击',
+            ],
+            'dollar': [
+                'dollar', 'usd', 'dollar index', 'greenback',
+                '美元', '美指', '美元指数', '美债',
+            ],
+            'supply_demand': [
+                'supply', 'demand', 'production', 'consumption', 'import',
+                'export', 'etf', 'holding',
+                '供需', '供给', '需求', '产量', '进口', '出口',
+                '持仓', '黄金ETF', '央行购金',
+            ],
+            'employment': [
+                'nonfarm', 'nfp', 'employment', 'unemployment', 'job', 'labor',
+                '非农', '就业', '失业率', '劳动力', '初请',
+            ],
+            'growth': [
+                'gdp', 'growth', 'recession', 'economic', 'recovery',
+                'GDP', '经济增长', '衰退', '复苏', '经济',
+            ],
+        }
+        
+        # 重要性词（中英文）
         self.importance_words = [
             'breaking', 'urgent', 'important', 'key', 'major',
             'fomc meeting', 'fed meeting', 'cpi data', 'nonfarm payrolls',
-            'powell speech', 'fed chair',
+            '突发', '重磅', '重要', '关键', '重大',
+            '美联储会议', '利率决议', 'CPI数据', '非农数据',
+            '鲍威尔讲话', '央行行长',
         ]
+        
+        # 合并中英文词库（用于匹配）
+        self.positive_words = {**self.positive_words_en, **self.positive_words_cn}
+        self.negative_words = {**self.negative_words_en, **self.negative_words_cn}
     
     def analyze_news(self, news_list: List[Dict]) -> SentimentAnalysisResult:
         """
@@ -263,41 +347,83 @@ class NewsSentimentAnalyzer:
         """
         计算情绪分数（-1到+1）
         
-        考虑：
-        - 正面/负面词的数量和强度
-        - 否定词翻转
-        - 加强词放大
+        支持中英文混合分析：
+        - 中文：直接字符串匹配（不需要分词）
+        - 英文：多词短语优先匹配
+        - 考虑否定词和加强词
         """
-        words = text.split()
         total_score = 0.0
-        word_count = 0
+        match_count = 0
+        
+        # ========================================
+        # 中文词汇匹配（直接字符串匹配）
+        # ========================================
+        
+        # 先匹配长的正面词（避免短词优先）
+        cn_positive_sorted = sorted(
+            self.positive_words_cn.items(),
+            key=lambda x: len(x[0]),
+            reverse=True
+        )
+        cn_negative_sorted = sorted(
+            self.negative_words_cn.items(),
+            key=lambda x: len(x[0]),
+            reverse=True
+        )
+        
+        for word, weight in cn_positive_sorted:
+            count = text.count(word)
+            if count > 0:
+                adjusted_weight = weight
+                # 检查是否有否定词在前面
+                for neg in self.negation_words_cn:
+                    if neg + word in text:
+                        adjusted_weight = -weight * 0.7
+                        break
+                total_score += adjusted_weight * count
+                match_count += count
+        
+        for word, weight in cn_negative_sorted:
+            count = text.count(word)
+            if count > 0:
+                adjusted_weight = weight
+                for neg in self.negation_words_cn:
+                    if neg + word in text:
+                        adjusted_weight = -weight * 0.7
+                        break
+                total_score += adjusted_weight * count
+                match_count += count
+        
+        # ========================================
+        # 英文词汇匹配（多词短语优先）
+        # ========================================
+        words = text.split()
         
         i = 0
         while i < len(words):
             word = words[i]
-            clean_word = word.strip('.,!?;:()[]{}"\'')
+            clean_word = word.strip('.,!?;:()[]{}"\'').lower()
             
-            # 检查多词短语
             found_phrase = False
             for phrase_len in [3, 2]:
                 if i + phrase_len <= len(words):
                     phrase = ' '.join(words[i:i + phrase_len])
-                    clean_phrase = phrase.strip('.,!?;:()[]{}"\'')
+                    clean_phrase = phrase.strip('.,!?;:()[]{}"\'').lower()
                     
-                    if clean_phrase in self.positive_words:
-                        score = self.positive_words[clean_phrase]
-                        score = self._apply_modifiers(words, i, phrase_len, score)
+                    if clean_phrase in self.positive_words_en:
+                        score = self.positive_words_en[clean_phrase]
+                        score = self._apply_modifiers_en(words, i, phrase_len, score)
                         total_score += score
-                        word_count += 1
+                        match_count += 1
                         i += phrase_len
                         found_phrase = True
                         break
                     
-                    if clean_phrase in self.negative_words:
-                        score = self.negative_words[clean_phrase]
-                        score = self._apply_modifiers(words, i, phrase_len, score)
+                    if clean_phrase in self.negative_words_en:
+                        score = self.negative_words_en[clean_phrase]
+                        score = self._apply_modifiers_en(words, i, phrase_len, score)
                         total_score += score
-                        word_count += 1
+                        match_count += 1
                         i += phrase_len
                         found_phrase = True
                         break
@@ -306,28 +432,28 @@ class NewsSentimentAnalyzer:
                 continue
             
             # 单词匹配
-            if clean_word in self.positive_words:
-                score = self.positive_words[clean_word]
-                score = self._apply_modifiers(words, i, 1, score)
+            if clean_word in self.positive_words_en:
+                score = self.positive_words_en[clean_word]
+                score = self._apply_modifiers_en(words, i, 1, score)
                 total_score += score
-                word_count += 1
-            elif clean_word in self.negative_words:
-                score = self.negative_words[clean_word]
-                score = self._apply_modifiers(words, i, 1, score)
+                match_count += 1
+            elif clean_word in self.negative_words_en:
+                score = self.negative_words_en[clean_word]
+                score = self._apply_modifiers_en(words, i, 1, score)
                 total_score += score
-                word_count += 1
+                match_count += 1
             
             i += 1
         
-        if word_count == 0:
+        if match_count == 0:
             return 0.0
         
         # 归一化到-1到+1
-        avg_score = total_score / word_count
+        avg_score = total_score / match_count
         return max(-1.0, min(1.0, avg_score))
     
-    def _apply_modifiers(self, words: List[str], index: int, length: int, score: float) -> float:
-        """应用修饰词（否定词、加强词）"""
+    def _apply_modifiers_en(self, words: List[str], index: int, length: int, score: float) -> float:
+        """应用英文修饰词（否定词、加强词）"""
         result = score
         
         # 检查前面3个词内的否定词和加强词
@@ -335,10 +461,10 @@ class NewsSentimentAnalyzer:
         for j in range(start, index):
             w = words[j].strip('.,!?;:()[]{}"\'').lower()
             
-            if w in self.negation_words:
+            if w in self.negation_words_en:
                 result = -result  # 翻转
-            elif w in self.intensifiers:
-                result *= self.intensifiers[w]
+            elif w in self.intensifiers_en:
+                result *= self.intensifiers_en[w]
         
         return result
     

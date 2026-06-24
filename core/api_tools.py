@@ -508,24 +508,253 @@ class NewsAPI:
         
         return results if results else None
     
+    @staticmethod
+    def jin10() -> Optional[List[Dict]]:
+        """
+        API 10: 金十数据
+        
+        功能：获取中文财经快讯（黄金、外汇、股市等）
+        优点：完全免费、无需API Key、时效性强、中文内容
+        链接：https://www.jin10.com
+        
+        返回示例：
+        [{
+            'title': '金价突破4000美元',
+            'description': '...',
+            'source': '金十数据',
+            'pubDate': '2026-06-24 12:00:00',
+            'language': 'zh'
+        }]
+        """
+        url = "https://www.jin10.com/flash_newest.js"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        try:
+            import json as _json
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                text = resp.text
+                start = text.find('[')
+                end = text.rfind(']') + 1
+                if start >= 0 and end > start:
+                    json_str = text[start:end]
+                    data = _json.loads(json_str)
+                    
+                    # 筛选黄金相关
+                    gold_keywords = [
+                        '黄金', '金价', 'gold', 'XAU', '贵金属', '白银',
+                        '美联储', '加息', '降息', 'CPI', '通胀', 'PCE',
+                        '非农', '就业', '美元', '美指', '地缘', '战争',
+                        '避险', '利率决议', 'FOMC', '鲍威尔'
+                    ]
+                    
+                    results = []
+                    for item in data:
+                        d = item.get('data', {})
+                        title = d.get('title', '') or ''
+                        content = d.get('content', '') or ''
+                        source = d.get('source', '') or '金十数据'
+                        time_str = item.get('time', '')
+                        
+                        # 检查是否黄金相关
+                        text_all = (title + content).lower()
+                        is_gold_related = any(k.lower() in text_all for k in gold_keywords)
+                        
+                        # 重要新闻也保留
+                        is_important = item.get('important', 0) == 1
+                        
+                        if is_gold_related or is_important:
+                            desc = content if len(content) > len(title) else title
+                            results.append({
+                                'title': title or content[:50],
+                                'description': desc,
+                                'source': source or '金十数据',
+                                'pubDate': time_str,
+                                'language': 'zh',
+                                'important': is_important,
+                                'link': d.get('source_link', '')
+                            })
+                    
+                    return results if results else None
+        except Exception as e:
+            print(f"❌ 金十数据失败: {e}")
+        return None
+    
+    @staticmethod
+    def wallstreetcn() -> Optional[List[Dict]]:
+        """
+        API 11: 华尔街见闻
+        
+        功能：获取中文财经快讯（黄金频道）
+        优点：完全免费、无需API Key、专业金融媒体、中文内容
+        链接：https://wallstreetcn.com
+        
+        返回示例：
+        [{
+            'title': '美联储会议纪要公布',
+            'description': '...',
+            'source': '华尔街见闻',
+            'pubDate': '2026-06-24',
+            'language': 'zh'
+        }]
+        """
+        url = "https://api.wallstreetcn.com/apiv1/content/lives?channel=gold-channel&limit=30"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                d = resp.json()
+                items = d.get('data', {}).get('items', [])
+                
+                results = []
+                for item in items:
+                    title = item.get('title', '') or ''
+                    content_text = item.get('content_text', '') or ''
+                    display_time = item.get('display_time', '')
+                    
+                    # 如果title太短，用content_text
+                    if len(title) < 5 and content_text:
+                        title = content_text[:80]
+                    
+                    results.append({
+                        'title': title,
+                        'description': content_text,
+                        'source': '华尔街见闻',
+                        'pubDate': display_time,
+                        'language': 'zh',
+                        'link': f"https://wallstreetcn.com/live/{item.get('id', '')}"
+                    })
+                
+                return results if results else None
+        except Exception as e:
+            print(f"❌ 华尔街见闻失败: {e}")
+        return None
+    
+    @staticmethod
+    def eastmoney_news() -> Optional[List[Dict]]:
+        """
+        API 12: 东方财富快讯
+        
+        功能：获取东方财富财经快讯
+        优点：完全免费、无需API Key、国内主流财经媒体
+        链接：https://www.eastmoney.com
+        
+        返回示例：
+        [{
+            'title': '黄金价格上涨',
+            'description': '...',
+            'source': '东方财富',
+            'pubDate': '2026-06-24',
+            'language': 'zh'
+        }]
+        """
+        url = "https://newsapi.eastmoney.com/kuaixun/v1/getlist_102_ajaxResult_50_1_.html"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        try:
+            import json as _json
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                text = resp.text
+                start = text.find('{')
+                end = text.rfind('}') + 1
+                if start >= 0 and end > start:
+                    json_str = text[start:end]
+                    d = _json.loads(json_str)
+                    lives = d.get('LivesList', [])
+                    
+                    gold_keywords = ['黄金', '金价', '贵金属', '美联储', '加息', '降息', 'CPI', '通胀', '白银']
+                    
+                    results = []
+                    for item in lives:
+                        title = item.get('title', '') or ''
+                        digest = item.get('digest', '') or ''
+                        
+                        text_all = (title + digest).lower()
+                        if any(k.lower() in text_all for k in gold_keywords):
+                            results.append({
+                                'title': title,
+                                'description': digest,
+                                'source': '东方财富',
+                                'pubDate': item.get('showtime', ''),
+                                'language': 'zh',
+                                'link': item.get('url_w', '')
+                            })
+                    
+                    return results if results else None
+        except Exception as e:
+            print(f"❌ 东方财富失败: {e}")
+        return None
+    
+    @classmethod
+    def get_chinese_news(cls) -> List[Dict]:
+        """
+        获取中文财经新闻（多源汇总）
+        
+        按优先级：金十数据 > 华尔街见闻 > 东方财富
+        """
+        all_news = []
+        
+        # 金十数据（最快、最相关）
+        news = cls.jin10()
+        if news:
+            all_news.extend(news)
+        
+        # 华尔街见闻（黄金频道）
+        news = cls.wallstreetcn()
+        if news:
+            all_news.extend(news)
+        
+        # 东方财富
+        news = cls.eastmoney_news()
+        if news:
+            all_news.extend(news)
+        
+        # 去重（按标题）
+        seen = set()
+        unique_news = []
+        for item in all_news:
+            title = item.get('title', '')[:50]
+            if title and title not in seen:
+                seen.add(title)
+                unique_news.append(item)
+        
+        return unique_news
+    
     @classmethod
     def get_financial_news(cls, keyword: str = 'gold') -> List[Dict]:
         """
-        获取财经新闻（多源）
+        获取财经新闻（多源，中英文混合）
         
-        按优先级尝试多个数据源
+        优先中文新闻（更贴近国内投资者），再补充英文新闻
         """
-        # 先尝试newsdata.io
-        results = cls.newsdata_io()
-        if results:
-            return results
+        all_news = []
         
-        # 再尝试marketaux
-        results = cls.market_aux()
-        if results:
-            return results
+        # 中文新闻优先
+        cn_news = cls.get_chinese_news()
+        if cn_news:
+            all_news.extend(cn_news)
         
-        return []
+        # 补充英文新闻
+        en_news = cls.newsdata_io()
+        if en_news:
+            for item in en_news:
+                item['language'] = 'en'
+            all_news.extend(en_news)
+        
+        # 再补充MarketAux
+        if len(all_news) < 10:
+            en_news2 = cls.market_aux()
+            if en_news2:
+                for item in en_news2:
+                    item['language'] = 'en'
+                all_news.extend(en_news2)
+        
+        return all_news
 
 
 # =============================================================================
