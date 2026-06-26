@@ -27,6 +27,7 @@
 """
 
 import requests
+import re
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 
@@ -634,11 +635,62 @@ class NewsAPI:
         return None
     
     @staticmethod
+    def sina_7x24() -> Optional[List[Dict]]:
+        """
+        API 12: 新浪财经7x24小时直播
+        
+        功能：获取新浪财经7x24小时实时快讯
+        优点：完全免费、无需API Key、数据稳定、更新频繁
+        链接：https://finance.sina.com.cn/7x24/
+        
+        返回示例：
+        [{
+            'title': '央行开展1000亿元逆回购操作',
+            'description': '...',
+            'source': '新浪财经',
+            'pubDate': '2026-06-24 12:00:00',
+            'language': 'zh'
+        }]
+        """
+        url = "https://zhibo.sina.com.cn/api/zhibo/feed"
+        params = {
+            'page': 1,
+            'page_size': 20,
+            'zhibo_id': '152',  # 财经7x24
+            'type': '0'
+        }
+        
+        try:
+            resp = requests.get(url, params=params, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get('result', {}).get('status', {}).get('code') == 0:
+                    items = data['result']['data']['feed']['list']
+                    results = []
+                    for item in items:
+                        rich_text = item.get('rich_text', '')
+                        # 去掉HTML标签
+                        text = re.sub(r'<[^>]+>', '', rich_text)
+                        if text and len(text) > 10:  # 过滤空内容
+                            results.append({
+                                'title': text[:100],  # 截取前100字符作为标题
+                                'description': text,
+                                'source': '新浪财经',
+                                'pubDate': item.get('create_time', ''),
+                                'language': 'zh',
+                                'link': ''
+                            })
+                    return results if results else None
+        except Exception as e:
+            print(f"❌ 新浪财经7x24失败: {e}")
+        return None
+    
+    @staticmethod
     def eastmoney_news() -> Optional[List[Dict]]:
         """
-        API 12: 东方财富快讯
+        API 13: 东方财富快讯
         
-        功能：获取东方财富财经快讯
+        功能：获取东方财富实时快讯
         优点：完全免费、无需API Key、国内主流财经媒体
         链接：https://www.eastmoney.com
         
@@ -695,9 +747,14 @@ class NewsAPI:
         """
         获取中文财经新闻（多源汇总）
         
-        按优先级：金十数据 > 华尔街见闻 > 东方财富
+        按优先级：新浪财经7x24 > 金十数据 > 华尔街见闻 > 东方财富
         """
         all_news = []
+        
+        # 新浪财经7x24（最稳定、数据量最大）
+        news = cls.sina_7x24()
+        if news:
+            all_news.extend(news)
         
         # 金十数据（最快、最相关）
         news = cls.jin10()
