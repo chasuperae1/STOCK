@@ -28,7 +28,7 @@
 
 import requests
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 
 
@@ -742,12 +742,95 @@ class NewsAPI:
             print(f"❌ 东方财富失败: {e}")
         return None
     
+    @staticmethod
+    def _parse_pubdate(pub_date, source: str = '') -> Optional[datetime]:
+        """
+        解析各种时间格式为datetime对象（统一转为北京时间）
+        
+        支持的格式：
+        - '2026-06-26 16:20:56' (新浪、金十、东方财富 - 北京时间)
+        - 1782430201 (华尔街见闻，unix时间戳)
+        - '2026-06-26T08:12:03.000000Z' (MarketAux，ISO格式 - UTC)
+        """
+        if not pub_date:
+            return None
+        
+        # unix时间戳（华尔街见闻）
+        if isinstance(pub_date, (int, float)):
+            try:
+                # unix时间戳是UTC，需要转为北京时间
+                dt = datetime.utcfromtimestamp(pub_date) + timedelta(hours=8)
+                return dt
+            except:
+                return None
+        
+        # 字符串格式
+        if isinstance(pub_date, str):
+            # ISO格式: 2026-06-26T08:12:03.000000Z (UTC)
+            if 'T' in pub_date:
+                try:
+                    dt = datetime.strptime(pub_date[:19], '%Y-%m-%dT%H:%M:%S')
+                    # 如果是UTC时间，转为北京时间
+                    if 'Z' in pub_date or '+00:00' in pub_date:
+                        dt = dt + timedelta(hours=8)
+                    return dt
+                except:
+                    return None
+            
+            # 标准格式: 2026-06-26 16:20:56 (中文源已经是北京时间)
+            try:
+                return datetime.strptime(pub_date[:19], '%Y-%m-%d %H:%M:%S')
+            except:
+                try:
+                    return datetime.strptime(pub_date[:10], '%Y-%m-%d')
+                except:
+                    return None
+        
+        return None
+    
     @classmethod
-    def get_chinese_news(cls) -> List[Dict]:
+    def _filter_by_time(cls, news_list: List[Dict], hours: int = 24) -> List[Dict]:
+        """
+        按时间过滤新闻，只保留指定小时内的新闻
+        
+        参数：
+            news_list: 新闻列表
+            hours: 时间范围（小时），默认24小时
+        
+        返回：
+            过滤后的新闻列表
+        """
+        # 统一使用北京时间（UTC+8）作为参考
+        now = datetime.utcnow() + timedelta(hours=8)
+        cutoff = now - timedelta(hours=hours)
+        
+        filtered = []
+        for item in news_list:
+            pub_date = item.get('pubDate')
+            source = item.get('source', '')
+            dt = cls._parse_pubdate(pub_date, source=source)
+            
+            if dt is None:
+                # 无法解析时间的新闻，保留（避免丢失）
+                item['_time_warning'] = '时间无法解析'
+                filtered.append(item)
+            elif dt >= cutoff:
+                # 在时间范围内
+                item['_age_hours'] = round((now - dt).total_seconds() / 3600, 1)
+                item['_pub_beijing'] = dt.strftime('%Y-%m-%d %H:%M')
+                filtered.append(item)
+            # 超出时间范围的丢弃
+        
+        return filtered
+    
+    @classmethod
+    def get_chinese_news(cls, hours: int = 24) -> List[Dict]:
         """
         获取中文财经新闻（多源汇总）
         
         按优先级：新浪财经7x24 > 金十数据 > 华尔街见闻 > 东方财富
+        参数：
+            hours: 时间范围（小时），默认24小时，只保留最近的新闻
         """
         all_news = []
         
@@ -771,10 +854,13 @@ class NewsAPI:
         if news:
             all_news.extend(news)
         
+        # 严格时间过滤
+        filtered_news = cls._filter_by_time(all_news, hours=hours)
+        
         # 去重（按标题）
         seen = set()
         unique_news = []
-        for item in all_news:
+        for item in filtered_news:
             title = item.get('title', '')[:50]
             if title and title not in seen:
                 seen.add(title)
@@ -783,22 +869,27 @@ class NewsAPI:
         return unique_news
     
     @classmethod
-    def get_financial_news(cls, keyword: str = 'gold') -> List[Dict]:
+    def get_financial_news(cls, keyword: str = 'gold', hours: int = 24) -> List[Dict]:
         """
         获取财经新闻（多源，中英文混合）
         
         优先中文新闻（更贴近国内投资者），再补充英文新闻
+        参数：
+            keyword: 关键词
+            hours: 时间范围（小时），默认24小时
         """
         all_news = []
         
-        # 中文新闻优先
-        cn_news = cls.get_chinese_news()
+        # 中文新闻优先（带时间过滤）
+        cn_news = cls.get_chinese_news(hours=hours)
         if cn_news:
             all_news.extend(cn_news)
         
         # 补充英文新闻
         en_news = cls.newsdata_io()
         if en_news:
+            # 英文新闻也做时间过滤
+            en_news = cls._filter_by_time(en_news, hours=hours)
             for item in en_news:
                 item['language'] = 'en'
             all_news.extend(en_news)
@@ -807,6 +898,7 @@ class NewsAPI:
         if len(all_news) < 10:
             en_news2 = cls.market_aux()
             if en_news2:
+                en_news2 = cls._filter_by_time(en_news2, hours=hours)
                 for item in en_news2:
                     item['language'] = 'en'
                 all_news.extend(en_news2)

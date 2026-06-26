@@ -128,13 +128,17 @@ class GoldAnalysisSkill:
         self.events = EconomicCalendarAPI.forexfactory() or []
         print(f"   ✅ {len(self.events)}个事件")
         
-        # 5. 财经新闻
-        print("📡 [5/6] 获取财经新闻...")
-        self.news = NewsAPI.get_financial_news()
+        # 5. 财经新闻（严格24小时时间过滤）
+        print("📡 [5/6] 获取财经新闻（24小时内）...")
+        self.news = NewsAPI.get_financial_news(hours=24)
         # 统计中英文
         cn_count = sum(1 for n in self.news if n.get('language') == 'zh')
         en_count = sum(1 for n in self.news if n.get('language') == 'en')
         print(f"   ✅ {len(self.news)}条新闻（中文{cn_count} + 英文{en_count}）")
+        # 显示时间范围
+        if self.news:
+            ages = [n.get('_age_hours', 24) for n in self.news]
+            print(f"   ⏰ 时间范围: 最近{min(ages):.1f}小时 ~ 最近{max(ages):.1f}小时（北京时间）")
         
         # 6. 外汇数据
         print("📡 [6/6] 获取外汇数据...")
