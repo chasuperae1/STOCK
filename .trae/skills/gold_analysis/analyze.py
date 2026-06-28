@@ -36,6 +36,7 @@ from core.api_tools import (
 from core.real_data import RealGoldETFData
 from core.event_driven import EventDrivenAnalyzer
 from core.news_sentiment import NewsSentimentAnalyzer
+from core.blogger_tracker import BloggerTracker
 
 import pandas as pd
 import numpy as np
@@ -855,9 +856,53 @@ class GoldAnalysisSkill:
         
         print(f"\n⚡ 当前价格: ¥{price:.3f}")
     
+    def section_blogger_views(self):
+        """第十部分：知名博主观点追踪"""
+        self.print_section("十、知名博主观点追踪", star=True, weight="参考维度")
+        
+        # 获取博主观点
+        tracker = BloggerTracker()
+        views = tracker.fetch_blogger_views(days=7)
+        consensus = tracker.analyze_consensus(views)
+        
+        # 共识度概览
+        print(f"\n📊 共识度分析:")
+        print(f"   看多博主: {consensus['bullish_count']}位")
+        print(f"   看空博主: {consensus['bearish_count']}位")
+        print(f"   中性博主: {consensus['neutral_count']}位")
+        print(f"   平均情绪: {consensus['consensus']:+.2f}")
+        print(f"   共识程度: {consensus['consensus_level']}")
+        
+        # 各博主观点
+        print(f"\n📝 各博主最新观点:")
+        for i, view in enumerate(views, 1):
+            sentiment_emoji = '🟢' if view['sentiment'] > 0.2 else ('🔴' if view['sentiment'] < -0.2 else '⚡')
+            sentiment_text = '看多' if view['sentiment'] > 0.2 else ('看空' if view['sentiment'] < -0.2 else '中性')
+            
+            print(f"\n   {i}. {sentiment_emoji} {view['name']} ({view['style']})")
+            print(f"      平台: {view['platform']} | 粉丝: {view['followers']}")
+            print(f"      观点: {view['view']}")
+            print(f"      情绪: {sentiment_text} ({view['sentiment']:+.2f})")
+        
+        # 投资建议
+        print(f"\n💡 博主观点参考建议:")
+        if consensus['consensus'] > 0.3:
+            print(f"   ✅ 博主共识偏多，可参考做多")
+        elif consensus['consensus'] < -0.3:
+            print(f"   ⚠️ 博主共识偏空，建议谨慎")
+        else:
+            print(f"   ⚡ 博主观点分歧较大，建议独立判断")
+        
+        print(f"\n   📌 重要提示:")
+        print(f"   • 博主观点仅供参考，不构成投资建议")
+        print(f"   • 网红可能滞后或错误，数据比网红更可靠")
+        print(f"   • 建议用5维度分析系统交叉验证")
+        
+        return consensus
+    
     def section_risk_warning(self):
-        """第十部分：风险提示"""
-        self.print_section("十、风险提示")
+        """第十一部分：风险提示"""
+        self.print_section("十一、风险提示")
         
         print(f"""
 ⚠️  重要风险提示
@@ -871,6 +916,7 @@ class GoldAnalysisSkill:
 • 技术分析有局限性，不能作为唯一决策依据
 • 建议严格设置止损，单笔亏损控制在2%以内
 • 黄金ETF跟踪国际金价，需注意汇率波动和溢价风险
+• 博主观点仅供参考，不构成投资建议
 ────────────────────────────────────────────────────────────────────────
 """)
     
@@ -916,6 +962,7 @@ class GoldAnalysisSkill:
         game_score = self.section_game_theory()
         self.section_summary(tech_score, mom_score, game_score)
         self.section_key_levels()
+        self.section_blogger_views()
         self.section_risk_warning()
         
         self.print_separator("=")
