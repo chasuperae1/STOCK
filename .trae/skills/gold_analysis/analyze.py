@@ -37,6 +37,7 @@ from core.real_data import RealGoldETFData
 from core.event_driven import EventDrivenAnalyzer
 from core.news_sentiment import NewsSentimentAnalyzer
 from core.blogger_tracker import BloggerTracker
+from core.fund_tracker import FundTracker
 
 import pandas as pd
 import numpy as np
