@@ -901,6 +901,77 @@ class GoldAnalysisSkill:
         
         return consensus
     
+    def section_fund_holdings(self):
+        """第十一部分：基金持仓追踪"""
+        self.print_section("十一、基金持仓追踪", star=True, weight="持仓监控")
+        
+        # 获取基金数据
+        tracker = FundTracker()
+        funds_data = tracker.fetch_all_funds()
+        
+        if not funds_data:
+            print(f"\n❌ 无法获取基金数据")
+            return
+        
+        # 汇总
+        up_count = sum(1 for f in funds_data if f.get('change_pct', 0) > 0)
+        down_count = sum(1 for f in funds_data if f.get('change_pct', 0) < 0)
+        avg_change = sum(f.get('change_pct', 0) for f in funds_data) / len(funds_data) if funds_data else 0
+        
+        print(f"\n📊 持仓概览:")
+        print(f"   持仓基金: {len(funds_data)}只")
+        print(f"   今日上涨: {up_count}只 | 下跌: {down_count}只")
+        print(f"   平均涨跌: {avg_change:+.2f}%")
+        
+        # 各基金详情
+        print(f"\n📝 各基金详情:")
+        for i, fund in enumerate(funds_data, 1):
+            change = fund.get('change_pct', 0)
+            emoji = '🟢' if change > 0 else ('🔴' if change < 0 else '⚡')
+            
+            print(f"\n   {i}. {emoji} {fund['name']} ({fund['code']})")
+            print(f"      类型: {fund['type']} | 风险: {fund['risk']}")
+            if fund.get('nav'):
+                print(f"      净值: {fund['nav']:.4f} | 涨跌: {change:+.2f}%")
+            print(f"      板块: {fund['sector']}")
+            print(f"      基金经理: {fund['fund_manager']}")
+        
+        # 板块分布
+        print(f"\n🏷️ 板块分布:")
+        sectors = {}
+        for fund in funds_data:
+            sector = fund.get('sector', '未知')
+            for s in sector.split('/'):
+                s = s.strip()
+                if s:
+                    sectors[s] = sectors.get(s, 0) + 1
+        
+        for sector, count in sorted(sectors.items(), key=lambda x: -x[1])[:10]:
+            print(f"   • {sector}: {count}只基金覆盖")
+        
+        # 风险提示
+        print(f"\n💡 持仓分析建议:")
+        
+        # 分析集中度
+        tech_count = sum(1 for f in funds_data if any(k in f.get('sector', '') for k in ['半导体', '芯片', 'TMT', '信息产业', 'AI']))
+        if tech_count >= 3:
+            print(f"   ⚠️ 科技板块集中度高（{tech_count}只），注意行业系统性风险")
+        
+        bond_count = sum(1 for f in funds_data if '债' in f.get('type', ''))
+        if bond_count >= 1:
+            print(f"   ✅ 有{bond_count}只债券基金作为防御配置")
+        
+        qdii_count = sum(1 for f in funds_data if 'QDII' in f.get('type', ''))
+        if qdii_count >= 1:
+            print(f"   ✅ 有{qdii_count}只QDII基金实现全球配置")
+        
+        print(f"\n   📌 重要提示:")
+        print(f"   • 基金净值数据来自天天基金，仅供参考")
+        print(f"   • 基金投资有风险，过往业绩不代表未来表现")
+        print(f"   • 建议定期审视持仓，根据市场环境调整配置")
+        
+        return funds_data
+    
     def section_risk_warning(self):
         """第十一部分：风险提示"""
         self.print_section("十一、风险提示")
@@ -964,6 +1035,7 @@ class GoldAnalysisSkill:
         self.section_summary(tech_score, mom_score, game_score)
         self.section_key_levels()
         self.section_blogger_views()
+        self.section_fund_holdings()
         self.section_risk_warning()
         
         self.print_separator("=")
